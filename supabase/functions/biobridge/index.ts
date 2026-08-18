@@ -11,13 +11,13 @@ const corsHeaders = {
 };
 
 const EMBEDDING_MODEL = 'BAAI/bge-base-en-v1.5';
-const GROQ_MODEL = 'llama-3.3-70b-versatile';
+const GROQ_MODEL = 'openai/gpt-oss-120b';
 
-const CHUNK_SIZE = 1800;
-const CHUNK_OVERLAP = 250;
-const MAX_RETRIEVAL = 8;
-const MAX_WEB_RESULTS = 3;
-const MAX_OUTPUT_TOKENS = 4500;
+const CHUNK_SIZE = 1400;
+const CHUNK_OVERLAP = 150;
+const MAX_RETRIEVAL = 4;
+const MAX_WEB_RESULTS = 2;
+const MAX_OUTPUT_TOKENS = 2500;
 
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
