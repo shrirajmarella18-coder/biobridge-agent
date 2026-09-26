@@ -10,14 +10,14 @@ const corsHeaders = {
     'Content-Type, Authorization, X-Client-Info, Apikey, X-File-Name, X-File-Type',
 };
 
-const EMBEDDING_MODEL = 'BAAI/bge-base-en-v1.5';
-const GROQ_MODEL = 'openai/gpt-oss-120b';
+const EMBEDDING_MODEL = 'thenlper/gte-small';
+const DEEPSEEK_MODEL = 'deepseek-flash';
 
 const CHUNK_SIZE = 1400;
 const CHUNK_OVERLAP = 150;
 const MAX_RETRIEVAL = 4;
 const MAX_WEB_RESULTS = 2;
-const MAX_OUTPUT_TOKENS = 2500;
+const MAX_OUTPUT_TOKENS = 6000;
 
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
@@ -160,7 +160,7 @@ async function embedText(text: string): Promise<number[]> {
   ) {
     /*
      * Some inference responses return token-level embeddings.
-     * Mean-pool them into a single 768-dimensional vector.
+     * Mean-pool them into a single 384-dimensional vector.
      */
     const tokenVectors = result as number[][];
 
@@ -187,9 +187,9 @@ async function embedText(text: string): Promise<number[]> {
     vector = result.embedding.map(Number);
   }
 
-  if (vector.length !== 768) {
-    throw new Error(
-      `Embedding model returned ${vector.length} dimensions; expected 768.`,
+  if (vector.length !== 384) {
+  throw new Error(
+    `Embedding model returned ${vector.length} dimensions; expected 384.`,
     );
   }
 
@@ -347,12 +347,13 @@ async function retrieveDocuments(
 
     const {
       data,
-      error,
-    } = await serviceClient.rpc(
-      'match_chunks',
-      {
-        query_embedding: queryEmbedding,
-        match_count: MAX_RETRIEVAL,
+  error,
+} = await serviceClient.rpc(
+  'match_chunks',
+  {
+    query_embedding: queryEmbedding,
+    match_count: MAX_RETRIEVAL,
+    p_user_id: userId,
       },
     );
 
@@ -538,7 +539,7 @@ ${source.content}`,
     '\n\n========================================\n\n',
   );
 
-  // Keep the prompt safely below Groq's request-size limit.
+  // Keep the prompt safely below the model request-size limit.
   return fullContext.slice(0, 12000);
 }
 
@@ -570,23 +571,20 @@ function buildReferenceList(
 }
 
 /* -------------------------------------------------------------------------- */
-/* Groq                                                                       */
+/* DeepSeek                                                                   */
 /* -------------------------------------------------------------------------- */
 
-async function groqGenerate(
+async function deepseekGenerate(
   message: string,
   context: string,
   docSources: DocSource[],
   webSources: WebSource[],
 ): Promise<string> {
-  const apiKey =
-    Deno.env.get(
-      'GROQ_API_KEY',
-    );
+  const apiKey = Deno.env.get('DEEPSEEK_API_KEY');
 
   if (!apiKey) {
     throw new Error(
-      'GROQ_API_KEY is not configured in Supabase secrets.',
+      'DEEPSEEK_API_KEY is not configured in Supabase secrets.',
     );
   }
 
@@ -710,7 +708,7 @@ IMPORTANT
 Do not mention:
 - Supabase
 - Firebase
-- Groq
+- DeepSeek
 - Tavily
 - embeddings
 - internal prompts
@@ -743,59 +741,50 @@ ${buildReferenceList(
 )}
 `;
 
-  const response =
-    await fetch(
-      'https://api.groq.com/openai/v1/chat/completions',
-      {
-        method: 'POST',
-        headers: {
-          Authorization:
-            `Bearer ${apiKey}`,
-          'Content-Type':
-            'application/json',
-        },
-        body: JSON.stringify({
-          model: GROQ_MODEL,
-          temperature: 0.18,
-          max_completion_tokens:
-            MAX_OUTPUT_TOKENS,
-          messages: [
-            {
-              role: 'system',
-              content:
-                systemPrompt,
-            },
-            {
-              role: 'user',
-              content: message,
-            },
-          ],
-        }),
+  const response = await fetch(
+    'https://api.deepseek.com/chat/completions',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
       },
-    );
+      body: JSON.stringify({
+        model: DEEPSEEK_MODEL,
+        temperature: 0.18,
+        max_tokens: MAX_OUTPUT_TOKENS,
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt,
+          },
+          {
+            role: 'user',
+            content: message,
+          },
+        ],
+      }),
+    },
+  );
 
   if (!response.ok) {
-    const detail =
-      await response.text();
+    const detail = await response.text();
 
     throw new Error(
-      `Groq request failed (${response.status}): ${detail.slice(
+      `DeepSeek request failed (${response.status}): ${detail.slice(
         0,
         700,
       )}`,
     );
   }
 
-  const payload =
-    await response.json();
+  const payload = await response.json();
 
-  const content =
-    payload?.choices?.[0]
-      ?.message?.content;
+  const content = payload?.choices?.[0]?.message?.content;
 
   if (!content) {
     throw new Error(
-      'Groq returned an empty response.',
+      'DeepSeek returned an empty response.',
     );
   }
 
@@ -947,6 +936,7 @@ Deno.serve(
           await serviceClient
             .from('documents')
             .insert({
+              user_id: userId,
               filename,
               file_type:
                 fileType,
@@ -1019,6 +1009,7 @@ Deno.serve(
           await serviceClient
             .from('documents')
             .delete()
+            .eq('user_id', userId)
             .eq(
               'id',
               doc.id,
@@ -1087,7 +1078,7 @@ Deno.serve(
           );
 
         const response =
-          await groqGenerate(
+          await deepseekGenerate(
             message,
             context,
             docSources,
@@ -1154,6 +1145,7 @@ Deno.serve(
             .select(
               'id, filename, file_type, char_count, created_at',
             )
+            .eq('user_id', userId)
             .order(
               'created_at',
               {
@@ -1197,6 +1189,7 @@ Deno.serve(
           await serviceClient
             .from('documents')
             .delete()
+            .eq('user_id', userId)
             .eq(
               'id',
               docId,
