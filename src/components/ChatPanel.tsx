@@ -2,7 +2,20 @@ import { useState, useRef, useEffect } from 'react';
 import type { ChatMessage } from '@/types/chat';
 import { renderMarkdown } from '@/lib/markdown';
 import { generateDocx, downloadBlob } from '@/lib/docx-export';
-import { Send, Trash2, Download, FileText } from 'lucide-react';
+import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
+import { useAuth } from '@/hooks/useAuth';
+import MicButton from '@/components/MicButton';
+
+import {
+  Send,
+  Trash2,
+  Download,
+  FileText,
+  Paperclip,
+  X,
+  Loader2,
+  FileCheck2,
+} from 'lucide-react';
 
 interface ChatPanelProps {
   messages: ChatMessage[];
@@ -13,6 +26,13 @@ interface ChatPanelProps {
   onPrefillConsumed: () => void;
 }
 
+const MAX_FILE_SIZE = 15 * 1024 * 1024;
+
+const ALLOWED_FILE_TYPES = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
+
 export default function ChatPanel({
   messages,
   onSend,
@@ -22,16 +42,43 @@ export default function ChatPanel({
   onPrefillConsumed,
 }: ChatPanelProps) {
   const [input, setInput] = useState('');
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { getIdToken } = useAuth();
+
+  const {
+    supported,
+    listening,
+    error: speechError,
+    toggle,
+  } = useSpeechRecognition((text) =>
+    setInput((prev) => (prev ? `${prev} ${text}` : text))
+  );
+
+  /* -----------------------------------------------------------
+     PREFILL
+  ----------------------------------------------------------- */
 
   useEffect(() => {
     if (prefill !== null) {
       setInput(prefill);
       onPrefillConsumed();
-      textareaRef.current?.focus();
+
+      requestAnimationFrame(() => {
+        textareaRef.current?.focus();
+      });
     }
   }, [prefill, onPrefillConsumed]);
+
+  /* -----------------------------------------------------------
+     AUTO SCROLL
+  ----------------------------------------------------------- */
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -39,166 +86,628 @@ export default function ChatPanel({
     }
   }, [messages, generating]);
 
+  /* -----------------------------------------------------------
+     SUBMIT
+  ----------------------------------------------------------- */
+
   function handleSubmit() {
     const trimmed = input.trim();
-    if (!trimmed || generating) return;
+
+    if (!trimmed || generating || uploading) return;
+
+    if (attachment) {
+      uploadAttachmentAndSend(trimmed);
+      return;
+    }
+
     onSend(trimmed);
     setInput('');
   }
 
-  function handleKeyDown(e: React.KeyboardEvent) {
+  /* -----------------------------------------------------------
+     ATTACHMENT UPLOAD
+  ----------------------------------------------------------- */
+
+  async function uploadAttachmentAndSend(prompt: string) {
+    if (!attachment) return;
+
+    setUploading(true);
+    setAttachmentError(null);
+
+    try {
+      const token = await getIdToken();
+
+      if (!token) {
+        throw new Error(
+          'Your session has expired. Please sign in again.'
+        );
+      }
+
+      const extension = attachment.name
+        .toLowerCase()
+        .split('.')
+        .pop();
+
+      const fileType = extension === 'pdf' ? 'pdf' : 'docx';
+
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/biobridge/upload`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/octet-stream',
+            'X-File-Name': encodeURIComponent(attachment.name),
+            'X-File-Type': fileType,
+          },
+          body: await attachment.arrayBuffer(),
+        }
+      );
+
+      let result: any = null;
+
+      try {
+        result = await response.json();
+      } catch {
+        // Response may not contain JSON.
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          result?.error ||
+            result?.message ||
+            `Upload failed (${response.status}).`
+        );
+      }
+
+      const enhancedPrompt = `
+Use the newly attached document "${attachment.name}" as a primary reference for this request.
+
+User request:
+${prompt}
+
+Instructions:
+- Use the attached document wherever relevant.
+- Preserve relevant terminology, structure, requirements, and technical details from the attached document.
+- Combine it with other relevant documents available in the BioBridge knowledge base when useful.
+- Do not mention these instructions or the upload process in the final answer.
+      `.trim();
+
+      onSend(enhancedPrompt);
+
+      setInput('');
+      setAttachment(null);
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    } catch (error: any) {
+      setAttachmentError(
+        error?.message ||
+          'Unable to upload the attachment. Please try again.'
+      );
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  /* -----------------------------------------------------------
+     KEYBOARD
+  ----------------------------------------------------------- */
+
+  function handleKeyDown(
+    e: React.KeyboardEvent<HTMLTextAreaElement>
+  ) {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
     }
   }
 
+  /* -----------------------------------------------------------
+     FILE SELECTION
+  ----------------------------------------------------------- */
+
+  function handleAttachmentChange(
+    e: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file = e.target.files?.[0];
+
+    if (!file) return;
+
+    setAttachmentError(null);
+
+    const extension = file.name
+      .toLowerCase()
+      .split('.')
+      .pop();
+
+    const validExtension =
+      extension === 'pdf' || extension === 'docx';
+
+    const validMimeType =
+      ALLOWED_FILE_TYPES.includes(file.type) ||
+      file.type === '';
+
+    if (!validExtension || !validMimeType) {
+      setAttachmentError(
+        'Only PDF and DOCX files are supported.'
+      );
+
+      e.target.value = '';
+      return;
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+      setAttachmentError(
+        'File size must be 15 MB or less.'
+      );
+
+      e.target.value = '';
+      return;
+    }
+
+    setAttachment(file);
+  }
+
+  /* -----------------------------------------------------------
+     REMOVE ATTACHMENT
+  ----------------------------------------------------------- */
+
+  function removeAttachment() {
+    if (uploading) return;
+
+    setAttachment(null);
+    setAttachmentError(null);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  }
+
+  /* -----------------------------------------------------------
+     DOWNLOAD
+  ----------------------------------------------------------- */
+
   async function handleDownload(content: string) {
     const blob = await generateDocx(content);
-    const ts = new Date().toISOString().slice(0, 10);
-    downloadBlob(blob, `biobridge-document-${ts}.docx`);
+    downloadBlob(blob, 'Document.docx');
   }
+
+  /* -----------------------------------------------------------
+     TEXTAREA RESIZE
+  ----------------------------------------------------------- */
 
   function autoResize() {
     const el = textareaRef.current;
+
     if (!el) return;
+
     el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+    el.style.height =
+      Math.min(el.scrollHeight, 180) + 'px';
   }
 
   useEffect(() => {
     autoResize();
   }, [input]);
 
-  const isEmpty = messages.length === 0 && !generating;
+  const isEmpty =
+    messages.length === 0 && !generating;
+
+  /* ===========================================================
+     UI
+  =========================================================== */
 
   return (
-    <div className="flex flex-col h-full bg-ink">
-      {/* Header */}
-      <header className="flex items-center gap-3 px-6 py-3.5 border-b border-hairline">
-        <h1 className="text-base font-semibold tracking-tight text-content">
-          BioBridge AI
-        </h1>
-        <span className="w-2 h-2 rounded-full bg-teal glow-teal shrink-0" />
-        <p className="text-xs text-muted font-mono truncate">
-          Regulatory &amp; engineering document generation
-        </p>
+    <div className="flex h-full min-h-0 flex-col bg-workspace">
+
+      {/* =====================================================
+          HEADER
+      ===================================================== */}
+
+      <header className="h-[60px] shrink-0 flex items-center justify-between px-6 border-b border-hairline bg-workspace">
+
+        <div>
+          <h1 className="text-[15px] font-semibold tracking-tight text-ink-text">
+            BioAi
+          </h1>
+
+          <p className="text-[10px] text-ink-muted mt-0.5">
+            Documentation workspace
+          </p>
+        </div>
+
+        {messages.length > 0 && (
+          <button
+            type="button"
+            onClick={onClear}
+            disabled={generating || uploading}
+            className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em] text-ink-muted hover:text-ink-text transition-colors disabled:opacity-40"
+          >
+            <Trash2 size={12} />
+            Clear
+          </button>
+        )}
+
       </header>
 
-      {/* Messages area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-6 py-6">
+      {/* =====================================================
+          MESSAGES
+      ===================================================== */}
+
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto px-6 py-8"
+      >
+
         {isEmpty ? (
-          <div
-            className="flex flex-col items-center justify-center h-full text-center max-w-xl mx-auto"
-            style={{ animation: 'fadeUp 350ms ease-out forwards' }}
-          >
-            <h2 className="text-2xl font-semibold tracking-tight mb-3 gradient-text">
-              Draft documents grounded in your own SOPs and current regulatory guidance
-            </h2>
-            <p className="text-sm text-muted leading-relaxed max-w-md">
-              Upload reference documents to the left, then generate validation protocols, SOPs, risk assessments, and more — or ask a question about your uploaded materials.
-            </p>
+
+          <div className="max-w-3xl mx-auto h-full flex flex-col justify-center">
+
+            <div className="max-w-2xl mb-10">
+
+              <p className="text-[10px] uppercase tracking-[0.16em] font-semibold text-forest mb-3">
+                Technical documentation
+              </p>
+
+              <h2 className="text-[28px] sm:text-[32px] leading-[1.15] tracking-[-0.02em] font-semibold text-ink-text">
+                What would you like to prepare?
+              </h2>
+
+              <p className="mt-4 text-[13px] leading-6 text-ink-muted max-w-xl">
+                Draft, revise or review technical,
+                qualification and validation documentation
+                using your organization's working knowledge.
+              </p>
+
+            </div>
+
+            <div className="border-y border-hairline">
+
+              <div className="grid grid-cols-2 sm:grid-cols-4">
+
+                {[
+                  'SOP',
+                  'IQ / OQ / PQ',
+                  'Validation',
+                  'Risk Assessment',
+                ].map((item, index) => (
+                  <div
+                    key={item}
+                    className={`px-4 py-4 ${
+                      index < 3
+                        ? 'border-r border-hairline'
+                        : ''
+                    }`}
+                  >
+                    <p className="text-[11px] font-semibold text-ink-text">
+                      {item}
+                    </p>
+
+                    <p className="mt-1 text-[10px] leading-4 text-ink-muted">
+                      Controlled documentation
+                    </p>
+                  </div>
+                ))}
+
+              </div>
+
+            </div>
+
           </div>
+
         ) : (
-          <div className="max-w-3xl mx-auto flex flex-col gap-4">
+
+          <div className="max-w-3xl mx-auto flex flex-col gap-7">
+
             {messages.map((msg, idx) => {
-              const staggerDelay = Math.min(idx * 40, 400);
+
               if (msg.role === 'user') {
+
                 return (
                   <div
                     key={msg.id}
-                    className="msg-enter flex justify-end"
-                    style={{
-                      animation: `fadeUp 350ms ease-out ${staggerDelay}ms forwards`,
-                    }}
+                    className="flex justify-end"
                   >
-                    <div className="max-w-[80%] bg-panel border border-hairline rounded-lg px-4 py-3">
-                      <p className="text-sm text-content whitespace-pre-wrap">{msg.content}</p>
+
+                    <div className="max-w-[78%]">
+
+                      <div className="flex justify-end mb-1.5">
+                        <span className="text-[9px] uppercase tracking-[0.14em] text-ink-faint">
+                          Request
+                        </span>
+                      </div>
+
+                      <div className="border-l-2 border-forest pl-4">
+
+                        <p className="text-[13px] leading-6 whitespace-pre-wrap text-ink-text">
+                          {msg.content}
+                        </p>
+
+                      </div>
+
                     </div>
+
                   </div>
                 );
               }
+
               return (
                 <div
                   key={msg.id}
-                  className="msg-enter flex flex-col gap-2"
-                  style={{
-                    animation: `fadeUp 350ms ease-out ${staggerDelay}ms forwards`,
-                  }}
+                  className="flex flex-col gap-2"
                 >
+
                   <div className="flex items-center gap-2">
-                    <FileText size={14} className="text-muted" />
-                    <span className="text-xs font-mono text-muted uppercase tracking-wider">BioBridge AI</span>
+
+                    <FileCheck2
+                      size={13}
+                      className="text-forest"
+                      strokeWidth={1.8}
+                    />
+
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
+                      BioAi
+                    </span>
+
                   </div>
+
                   <div
-                    className="prose-bio bg-panel border border-hairline rounded-lg px-4 py-3 max-w-full"
-                    dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
+                    className="prose-bio max-w-full"
+                    dangerouslySetInnerHTML={{
+                      __html: renderMarkdown(msg.content),
+                    }}
                   />
+
                   <button
-                    onClick={() => handleDownload(msg.content)}
-                    className="flex items-center gap-1.5 text-xs text-muted hover:text-teal transition-colors duration-200 min-h-[40px] w-fit"
+                    type="button"
+                    onClick={() =>
+                      handleDownload(msg.content)
+                    }
+                    className="flex items-center gap-1.5 text-[10px] uppercase tracking-[0.08em] font-medium text-ink-muted hover:text-forest transition-colors duration-150 min-h-[32px] w-fit"
                   >
-                    <Download size={13} />
-                    Download as Word (.docx)
+                    <Download size={12} />
+                    Download Word document
                   </button>
+
                 </div>
               );
             })}
 
             {generating && (
-              <div className="msg-enter flex flex-col gap-2" style={{ animation: 'fadeUp 350ms ease-out forwards' }}>
+
+              <div className="flex flex-col gap-2">
+
                 <div className="flex items-center gap-2">
-                  <FileText size={14} className="text-muted" />
-                  <span className="text-xs font-mono text-muted uppercase tracking-wider">BioBridge AI</span>
+
+                  <FileCheck2
+                    size={13}
+                    className="text-forest"
+                    strokeWidth={1.8}
+                  />
+
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
+                    BioAi
+                  </span>
+
                 </div>
-                <div className="bg-panel border border-hairline rounded-lg px-4 py-3">
-                  <p className="text-sm text-muted animate-pulse-soft">Generating…</p>
+
+                <div className="flex items-center gap-3">
+
+                  <Loader2
+                    size={14}
+                    className="animate-spin text-forest"
+                  />
+
+                  <p className="text-[12px] text-ink-muted">
+                    Preparing your document…
+                  </p>
+
                 </div>
+
               </div>
+
             )}
+
           </div>
+
         )}
+
       </div>
 
-      {/* Input bar */}
-      <div className="border-t border-hairline px-6 py-4">
+      {/* =====================================================
+          COMPOSER
+      ===================================================== */}
+
+      <div className="shrink-0 border-t border-hairline bg-workspace px-6 py-4">
+
         <div className="max-w-3xl mx-auto">
-          <div className="flex items-end gap-2 bg-panel border border-hairline rounded-lg p-2">
-            <textarea
-              ref={textareaRef}
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder="Draft a validation protocol, generate an SOP, or ask about your documents…"
-              rows={1}
-              className="flex-1 bg-transparent text-sm text-content placeholder:text-muted resize-none outline-none px-2 py-2 min-h-[40px] max-h-40"
-            />
-            <button
-              onClick={handleSubmit}
-              disabled={!input.trim() || generating}
-              className="p-2 text-muted hover:text-teal disabled:opacity-40 disabled:cursor-not-allowed transition-colors duration-200 min-w-[40px] min-h-[40px] flex items-center justify-center"
-              title="Send"
-            >
-              <Send size={16} />
-            </button>
-          </div>
-          <div className="flex items-center justify-between mt-2 px-1">
-            <p className="text-[11px] text-muted font-mono">
-              Enter to send, Shift+Enter for a new line
-            </p>
-            {messages.length > 0 && (
+
+          {/* Attachment */}
+
+          {attachment && (
+
+            <div className="mb-2">
+
+              <div className="inline-flex items-center gap-2 bg-white border border-hairline rounded-md px-3 py-2 max-w-full">
+
+                <FileText
+                  size={13}
+                  className="text-forest shrink-0"
+                />
+
+                <div className="min-w-0">
+
+                  <p className="text-[11px] font-medium text-ink-text truncate max-w-[300px]">
+                    {attachment.name}
+                  </p>
+
+                  <p className="text-[9px] text-ink-muted mt-0.5">
+                    {(attachment.size / 1024 / 1024).toFixed(1)} MB
+                    {' · '}
+                    Ready as reference
+                  </p>
+
+                </div>
+
+                <button
+                  type="button"
+                  onClick={removeAttachment}
+                  disabled={uploading}
+                  className="ml-2 w-6 h-6 rounded flex items-center justify-center text-ink-muted hover:text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors"
+                  title="Remove attachment"
+                >
+                  <X size={13} />
+                </button>
+
+              </div>
+
+            </div>
+
+          )}
+
+          {/* Composer */}
+
+          <div
+            className={`bg-white border transition-all duration-150 ${
+              attachment
+                ? 'border-sage-200'
+                : 'border-hairline'
+            }`}
+          >
+
+            <div className="flex items-end gap-1 p-2">
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                onChange={handleAttachmentChange}
+                className="hidden"
+              />
+
+              {/* Attach */}
+
               <button
-                onClick={onClear}
-                disabled={generating}
-                className="flex items-center gap-1.5 text-[11px] text-muted hover:text-red-400 disabled:opacity-40 transition-colors duration-200 min-h-[40px] px-2"
+                type="button"
+                onClick={() =>
+                  fileInputRef.current?.click()
+                }
+                disabled={generating || uploading}
+                className="w-9 h-9 flex items-center justify-center text-ink-muted hover:text-forest hover:bg-sage-50 disabled:opacity-40 transition-colors shrink-0"
+                title="Attach PDF or DOCX"
               >
-                <Trash2 size={12} />
-                Clear conversation
+                <Paperclip size={16} />
               </button>
-            )}
+
+              {/* Text */}
+
+              <textarea
+                ref={textareaRef}
+                value={input}
+                onChange={(e) =>
+                  setInput(e.target.value)
+                }
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  attachment
+                    ? 'Describe what you want created from this reference…'
+                    : 'Describe the document, analysis or revision you need…'
+                }
+                rows={1}
+                disabled={generating || uploading}
+                className="flex-1 bg-transparent text-[13px] leading-5 text-ink-text placeholder:text-ink-faint resize-none outline-none px-2 py-2 min-h-[40px] max-h-[180px] disabled:opacity-60"
+              />
+
+              {/* Voice */}
+
+              {supported && (
+                <div className="shrink-0">
+
+                  <MicButton
+                    listening={listening}
+                    onClick={toggle}
+                  />
+
+                </div>
+              )}
+
+              {/* Send */}
+
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={
+                  !input.trim() ||
+                  generating ||
+                  uploading
+                }
+                className="w-9 h-9 bg-forest text-white flex items-center justify-center hover:bg-forest-dark disabled:opacity-30 disabled:cursor-not-allowed transition-colors shrink-0"
+                title={
+                  uploading
+                    ? 'Uploading…'
+                    : 'Send'
+                }
+              >
+
+                {uploading ? (
+                  <Loader2
+                    size={15}
+                    className="animate-spin"
+                  />
+                ) : (
+                  <Send size={15} />
+                )}
+
+              </button>
+
+            </div>
+
+            {/* Composer footer */}
+
+            <div className="flex items-start justify-between gap-6 px-3 pb-2">
+
+              <p className="text-[9px] leading-4 text-ink-faint">
+                BioAi can make mistakes, even good assistants
+                have their off days. For queries or issues, reach us
+                at{' '}
+                <a
+                  href="mailto:aibiobridge@gmail.com"
+                  className="text-forest hover:text-forest-dark transition-colors"
+                >
+                  aibiobridge@gmail.com
+                </a>
+              </p>
+
+              <p className="shrink-0 text-right text-[9px] leading-4 text-ink-faint">
+                PDF / DOCX · 15 MB maximum
+                <br />
+                Enter to send · Shift+Enter for new line
+              </p>
+
+            </div>
+
           </div>
+
+          {/* Errors */}
+
+          {attachmentError && (
+            <p className="text-[10px] text-red-600 mt-2 px-1">
+              {attachmentError}
+            </p>
+          )}
+
+          {speechError && (
+            <p className="text-[10px] text-red-600 mt-2 px-1">
+              {speechError}
+            </p>
+          )}
+
         </div>
+
       </div>
+
     </div>
   );
 }

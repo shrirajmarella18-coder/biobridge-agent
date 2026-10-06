@@ -1,3 +1,469 @@
+/*
+=============================================================
+BIOBRIDGE AI
+Enterprise Life-Sciences Design System
+=============================================================
+*/
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+
+/* =========================================================
+   DESIGN TOKENS
+   ========================================================= */
+
+:root {
+  --workspace: #f7f8f5;
+  --sidebar: #eef1ec;
+
+  --white: #ffffff;
+
+  --ink-text: #202622;
+  --ink-secondary: #4f5a53;
+  --ink-muted: #707a73;
+  --ink-faint: #9aa29c;
+
+  --hairline: #dce1dc;
+
+  --forest: #315c4b;
+  --forest-dark: #264b3c;
+
+  --sage-50: #f1f5f1;
+  --sage-100: #e4ece5;
+  --sage-200: #cbdacf;
+
+  --danger: #a33a32;
+
+  --shadow-soft:
+    0 1px 2px rgba(28, 36, 31, 0.04);
+
+  --shadow-card:
+    0 8px 24px rgba(28, 36, 31, 0.055);
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+}
+
+
+/* =========================================================
+   BASE
+   ========================================================= */
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+html {
+  background: var(--workspace);
+}
+
+body {
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  background: var(--workspace);
+  color: var(--ink-text);
+
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+
+/* =========================================================
+   SELECTION
+   ========================================================= */
+
+::selection {
+  background: var(--sage-200);
+  color: var(--ink-text);
+}
+
+
+/* =========================================================
+   SCROLLBARS
+   ========================================================= */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd1cc transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #cbd1cc;
+  border-radius: 10px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #b4bdb6;
+}
+
+
+/* =========================================================
+   TYPOGRAPHY
+   ========================================================= */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--ink-text);
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+}
+
+
+/* =========================================================
+   FOCUS
+   ========================================================= */
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--sage-200);
+  outline-offset: 2px;
+}
+
+
+/* =========================================================
+   BIOBRIDGE PROSE
+   ========================================================= */
+
+.prose-bio {
+  color: var(--ink-text);
+  font-size: 13px;
+  line-height: 1.72;
+}
+
+.prose-bio p {
+  margin: 0 0 14px;
+}
+
+.prose-bio p:last-child {
+  margin-bottom: 0;
+}
+
+.prose-bio h1,
+.prose-bio h2,
+.prose-bio h3,
+.prose-bio h4 {
+  color: var(--ink-text);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin-top: 22px;
+  margin-bottom: 9px;
+}
+
+.prose-bio h1 {
+  font-size: 20px;
+}
+
+.prose-bio h2 {
+  font-size: 17px;
+}
+
+.prose-bio h3 {
+  font-size: 15px;
+}
+
+.prose-bio h4 {
+  font-size: 14px;
+}
+
+.prose-bio ul,
+.prose-bio ol {
+  margin: 10px 0 15px;
+  padding-left: 22px;
+}
+
+.prose-bio li {
+  margin: 5px 0;
+}
+
+.prose-bio ul li::marker {
+  color: var(--forest);
+}
+
+.prose-bio ol li::marker {
+  color: var(--forest);
+  font-weight: 600;
+}
+
+.prose-bio strong {
+  color: var(--ink-text);
+  font-weight: 650;
+}
+
+.prose-bio em {
+  color: var(--ink-secondary);
+}
+
+.prose-bio blockquote {
+  margin: 16px 0;
+  padding: 10px 15px;
+  border-left: 3px solid var(--forest);
+  background: var(--sage-50);
+  color: var(--ink-secondary);
+}
+
+.prose-bio code {
+  font-family:
+    "SFMono-Regular",
+    Consolas,
+    "Liberation Mono",
+    monospace;
+
+  font-size: 0.88em;
+
+  padding: 2px 5px;
+
+  border-radius: 4px;
+
+  background: var(--sage-50);
+  color: var(--forest-dark);
+}
+
+.prose-bio pre {
+  overflow-x: auto;
+
+  margin: 15px 0;
+
+  padding: 15px;
+
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+
+  background: #f1f3f0;
+
+  font-family:
+    "SFMono-Regular",
+    Consolas,
+    "Liberation Mono",
+    monospace;
+
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.prose-bio pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.prose-bio table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 18px 0;
+  font-size: 12px;
+}
+
+.prose-bio th,
+.prose-bio td {
+  border: 1px solid var(--hairline);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.prose-bio th {
+  background: var(--sage-50);
+  color: var(--ink-text);
+  font-weight: 650;
+}
+
+.prose-bio td {
+  background: var(--white);
+}
+
+.prose-bio hr {
+  border: 0;
+  border-top: 1px solid var(--hairline);
+  margin: 22px 0;
+}
+
+
+/* =========================================================
+   FORM ELEMENTS
+   ========================================================= */
+
+textarea::placeholder,
+input::placeholder {
+  color: var(--ink-faint);
+  opacity: 1;
+}
+
+textarea {
+  caret-color: var(--forest);
+}
+
+
+/* =========================================================
+   SUBTLE MOTION
+   ========================================================= */
+
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulseSoft {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+
+  50% {
+    opacity: 1;
+  }
+}
+
+.fade-up {
+  animation: fadeUp 250ms ease-out forwards;
+}
+
+.fade-in {
+  animation: fadeIn 200ms ease-out forwards;
+}
+
+.animate-pulse-soft {
+  animation: pulseSoft 1.8s ease-in-out infinite;
+}
+
+
+/* =========================================================
+   UTILITY CLASSES
+   ========================================================= */
+
+.bg-workspace {
+  background-color: var(--workspace);
+}
+
+.bg-sidebar {
+  background-color: var(--sidebar);
+}
+
+.bg-forest {
+  background-color: var(--forest);
+}
+
+.bg-forest-dark {
+  background-color: var(--forest-dark);
+}
+
+.bg-sage-50 {
+  background-color: var(--sage-50);
+}
+
+.bg-sage-100 {
+  background-color: var(--sage-100);
+}
+
+.text-ink-text {
+  color: var(--ink-text);
+}
+
+.text-ink-secondary {
+  color: var(--ink-secondary);
+}
+
+.text-ink-muted {
+  color: var(--ink-muted);
+}
+
+.text-ink-faint {
+  color: var(--ink-faint);
+}
+
+.text-forest {
+  color: var(--forest);
+}
+
+.border-hairline {
+  border-color: var(--hairline);
+}
+
+.border-sage-100 {
+  border-color: var(--sage-100);
+}
+
+.border-sage-200 {
+  border-color: var(--sage-200);
+}
+
+
+/* =========================================================
+   MOBILE
+   ========================================================= */
+
+@media (max-width: 768px) {
+  .prose-bio {
+    font-size: 13px;
+  }
+
+  .prose-bio table {
+    display: block;
+    overflow-x: auto;
+  }
+}
+
+
+/* =========================================================
+   REDUCED MOTION
+   ========================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

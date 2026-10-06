@@ -1,15 +1,22 @@
-import { useRef, useState, useCallback } from 'react';
+import { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '@/hooks/useAuth';
 import { QUICK_ACTIONS } from '@/types/chat';
 import {
-  Upload,
   LogOut,
-  FileUp,
-  CheckCircle2,
   Menu,
   BookOpen,
   X,
+  ChevronRight,
+  FileText,
+  ClipboardList,
+  CheckCircle2,
+  Settings2,
+  ShieldCheck,
+  Factory,
+  FileCheck2,
+  TriangleAlert,
+  MessageSquare,
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -17,310 +24,92 @@ interface SidebarProps {
   onMenuClose: () => void;
 }
 
-type UploadState = 'idle' | 'uploading' | 'success';
-
 export default function Sidebar({
   onQuickAction,
   onMenuClose,
 }: SidebarProps) {
-  const { user, signOut, getIdToken } = useAuth();
+  const { user, signOut } = useAuth();
+  const [showGuide, setShowGuide] = useState(false);
 
-  const [uploadState, setUploadState] =
-    useState<UploadState>('idle');
-
-  const [uploadError, setUploadError] =
-    useState<string | null>(null);
-
-  const [dragging, setDragging] =
-    useState(false);
-
-  const [showGuide, setShowGuide] =
-    useState(false);
-
-  const inputRef =
-    useRef<HTMLInputElement>(null);
-
-  const handleFile = useCallback(
-    async (file: File) => {
-      const allowed = [
-        'application/pdf',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      ];
-
-      const extOk =
-        file.name.toLowerCase().endsWith('.pdf') ||
-        file.name.toLowerCase().endsWith('.docx');
-
-      if (!extOk && !allowed.includes(file.type)) {
-        setUploadError(
-          'Only .pdf and .docx files are accepted.'
-        );
-        return;
-      }
-
-      setUploadError(null);
-      setUploadState('uploading');
-
-      try {
-        const arrayBuffer =
-          await file.arrayBuffer();
-
-        const accessToken =
-          await getIdToken();
-
-        if (!accessToken) {
-          throw new Error(
-            'Authentication session expired. Please sign in again.'
-          );
-        }
-
-        const functionUrl =
-          `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/biobridge/upload`;
-
-        const response = await fetch(
-          functionUrl,
-          {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              'Content-Type':
-                'application/octet-stream',
-              'X-File-Name':
-                encodeURIComponent(file.name),
-              'X-File-Type':
-                file.name
-                  .toLowerCase()
-                  .endsWith('.pdf')
-                  ? 'pdf'
-                  : 'docx',
-            },
-            body: arrayBuffer,
-          }
-        );
-
-        if (!response.ok) {
-          throw new Error('Upload failed');
-        }
-
-        setUploadState('success');
-
-        setTimeout(
-          () => setUploadState('idle'),
-          3000
-        );
-      } catch {
-        setUploadError(
-          'Upload failed. Try again.'
-        );
-        setUploadState('idle');
-      }
-    },
-    [getIdToken]
-  );
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setDragging(false);
-
-      const file =
-        e.dataTransfer.files[0];
-
-      if (file) {
-        handleFile(file);
-      }
-    },
-    [handleFile]
-  );
-
-  const handleSelect = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file =
-        e.target.files?.[0];
-
-      if (file) {
-        handleFile(file);
-      }
-
-      e.target.value = '';
-    },
-    [handleFile]
-  );
-
-  const displayName =
-    user?.displayName ?? 'Engineer';
-
-  const displayEmail =
-    user?.email ?? '';
-
-  const avatarUrl =
-    user?.photoURL;
+  const displayName = user?.displayName ?? 'Engineer';
+  const displayEmail = user?.email ?? '';
+  const avatarUrl = user?.photoURL;
 
   return (
     <>
-      {/* =====================================================
-          SIDEBAR
-          ===================================================== */}
-
-      <div className="h-full flex flex-col bg-panel border-r border-hairline">
-
-        {/* Account row */}
-        <div className="flex items-center gap-3 px-4 py-4 border-b border-hairline">
-
-          {avatarUrl ? (
-            <img
-              src={avatarUrl}
-              alt=""
-              className="w-8 h-8 rounded-lg"
-            />
-          ) : (
-            <div className="w-8 h-8 rounded-lg bg-panel-active flex items-center justify-center text-xs font-mono text-muted">
-              {displayName
-                .charAt(0)
-                .toUpperCase()}
-            </div>
-          )}
-
-          <div className="flex-1 min-w-0">
-
-            <p className="text-sm text-content font-medium truncate">
-              {displayName}
-            </p>
-
-            <p className="text-xs text-muted truncate font-mono">
-              {displayEmail}
-            </p>
-
-          </div>
-
-          <button
-            onClick={signOut}
-            className="p-2 text-muted hover:text-content transition-colors duration-200 min-w-[40px] min-h-[40px] flex items-center justify-center"
-            title="Sign out"
-          >
-            <LogOut size={16} />
-          </button>
-
-        </div>
+      <div className="h-full flex flex-col bg-sidebar border-r border-hairline">
 
         {/* =====================================================
-            UPLOAD ZONE
+            ACCOUNT
             ===================================================== */}
 
         <div className="px-4 py-4 border-b border-hairline">
+          <div className="flex items-center gap-3">
 
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() =>
-              setDragging(false)
-            }
-            onDrop={handleDrop}
-            onClick={() =>
-              inputRef.current?.click()
-            }
-            className={`border rounded-lg p-4 cursor-pointer transition-colors duration-200 min-h-[40px] ${
-              dragging
-                ? 'border-teal bg-teal/5'
-                : uploadState === 'uploading'
-                ? 'border-hairline bg-panel-active'
-                : uploadState === 'success'
-                ? 'border-teal/40 bg-teal/5'
-                : 'border-hairline hover:border-muted/50'
-            }`}
-          >
-
-            <input
-              ref={inputRef}
-              type="file"
-              accept=".pdf,.docx"
-              onChange={handleSelect}
-              className="hidden"
-            />
-
-            {uploadState === 'idle' && (
-              <div className="flex flex-col items-center gap-2 text-center">
-
-                <Upload
-                  size={20}
-                  className="text-muted"
-                />
-
-                <div>
-
-                  <p className="text-sm text-content font-medium">
-                    Upload reference documents
-                  </p>
-
-                  <p className="text-xs text-muted mt-0.5 font-mono">
-                    .pdf or .docx — drag &amp; drop or click
-                  </p>
-
-                </div>
-
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt=""
+                className="w-9 h-9 rounded-md object-cover border border-hairline"
+              />
+            ) : (
+              <div className="w-9 h-9 rounded-md bg-sage-100 border border-sage-200 flex items-center justify-center text-xs font-semibold text-forest">
+                {displayName.charAt(0).toUpperCase()}
               </div>
             )}
 
-            {uploadState === 'uploading' && (
-              <div className="flex flex-col items-center gap-2 text-center">
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-ink-text font-semibold truncate">
+                {displayName}
+              </p>
 
-                <FileUp
-                  size={20}
-                  className="text-teal animate-pulse-soft"
-                />
+              <p className="text-[11px] text-ink-muted truncate">
+                {displayEmail}
+              </p>
+            </div>
 
-                <p className="text-sm text-content font-medium">
-                  Uploading &amp; indexing…
-                </p>
-
-              </div>
-            )}
-
-            {uploadState === 'success' && (
-              <div className="flex flex-col items-center gap-2 text-center">
-
-                <CheckCircle2
-                  size={20}
-                  className="text-teal"
-                />
-
-                <p className="text-sm text-content font-medium">
-                  Document indexed
-                </p>
-
-              </div>
-            )}
+            <button
+              onClick={signOut}
+              className="p-2 text-ink-muted hover:text-ink-text hover:bg-white rounded-md transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center"
+              title="Sign out"
+            >
+              <LogOut size={15} />
+            </button>
 
           </div>
-
-          {uploadError && (
-            <p className="mt-2 text-xs text-red-400 font-mono">
-              {uploadError}
-            </p>
-          )}
-
         </div>
 
         {/* =====================================================
-            PROMPT & DOCUMENT GUIDE BUTTON
+            GUIDE
             ===================================================== */}
 
-        <div className="px-4 py-3 border-b border-hairline">
+        <div className="px-3 py-3 border-b border-hairline">
 
           <button
-            onClick={() =>
-              setShowGuide(true)
-            }
-            className="w-full flex items-center gap-2 px-3 py-2.5 text-sm text-muted hover:text-content hover:bg-panel-hover rounded-lg transition-colors duration-200"
+            onClick={() => setShowGuide(true)}
+            className="group w-full flex items-center gap-3 px-3 py-3 text-left rounded-md text-ink-muted hover:text-ink-text hover:bg-white transition-colors duration-150"
           >
 
-            <BookOpen size={15} />
-
-            <span>
-              Prompt &amp; Document Guide
+            <span className="w-8 h-8 rounded-md bg-white border border-hairline flex items-center justify-center shrink-0 group-hover:border-sage-200 group-hover:text-forest transition-colors">
+              <BookOpen size={14} />
             </span>
+
+            <span className="flex-1 min-w-0">
+
+              <span className="block text-sm font-medium">
+                Prompt &amp; Document Guide
+              </span>
+
+              <span className="block text-[11px] text-ink-muted mt-0.5">
+                Write better technical requests
+              </span>
+
+            </span>
+
+            <ChevronRight
+              size={15}
+              className="text-ink-faint group-hover:text-forest transition-colors"
+            />
 
           </button>
 
@@ -330,30 +119,167 @@ export default function Sidebar({
             QUICK ACTIONS
             ===================================================== */}
 
-        <div className="flex-1 overflow-y-auto px-2 py-2">
+        <div className="flex-1 overflow-y-auto px-3 py-5">
 
-          <p className="px-2 py-2 text-[11px] uppercase tracking-[0.12em] text-muted font-mono">
-            Quick Actions
-          </p>
+          <div className="px-2 mb-4">
 
-          <div className="flex flex-col gap-0.5">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-ink-faint">
+              Workspace
+            </p>
 
-            {QUICK_ACTIONS.map(
-              (action) => (
-                <button
-                  key={action.label}
-                  onClick={() => {
-                    onQuickAction(
-                      action.prompt
-                    );
-                    onMenuClose();
-                  }}
-                  className="text-left px-3 py-2 text-sm text-muted hover:text-content hover:bg-panel-hover rounded-lg transition-colors duration-200 min-h-[40px]"
-                >
-                  {action.label}
-                </button>
-              )
-            )}
+            <p className="text-xs text-ink-muted mt-1">
+              Common document workflows
+            </p>
+
+          </div>
+
+          <div className="space-y-5">
+
+            {(() => {
+              let lastCategory = '';
+
+              return QUICK_ACTIONS.map((action) => {
+
+                const label = action.label.toLowerCase();
+
+                const category =
+                  label.includes('dpr') ||
+                  label.includes('urs') ||
+                  label.includes('sop')
+                    ? 'Documentation'
+                    : label.includes('iq') ||
+                      label.includes('oq') ||
+                      label.includes('pq') ||
+                      label.includes('fat') ||
+                      label.includes('sat')
+                    ? 'Qualification'
+                    : label.includes('validation') ||
+                      label.includes('risk')
+                    ? 'Validation & Risk'
+                    : 'Knowledge';
+
+                const showCategory = category !== lastCategory;
+                lastCategory = category;
+
+                const Icon =
+                  label.includes('sop')
+                    ? FileText
+                    : label.includes('urs')
+                    ? ClipboardList
+                    : label.includes('iq')
+                    ? CheckCircle2
+                    : label.includes('oq')
+                    ? Settings2
+                    : label.includes('pq')
+                    ? ShieldCheck
+                    : label.includes('fat')
+                    ? Factory
+                    : label.includes('sat')
+                    ? ShieldCheck
+                    : label.includes('validation')
+                    ? FileCheck2
+                    : label.includes('risk')
+                    ? TriangleAlert
+                    : label.includes('ask')
+                    ? MessageSquare
+                    : FileText;
+
+                const subtitle =
+                  label.includes('dpr')
+                    ? 'Detailed project requirements'
+                    : label.includes('urs')
+                    ? 'User requirements specification'
+                    : label.includes('sop')
+                    ? 'Standard operating procedure'
+                    : label.includes('iq')
+                    ? 'Installation qualification'
+                    : label.includes('oq')
+                    ? 'Operational qualification'
+                    : label.includes('pq')
+                    ? 'Performance qualification'
+                    : label.includes('fat')
+                    ? 'Factory acceptance testing'
+                    : label.includes('sat')
+                    ? 'Site acceptance testing'
+                    : label.includes('validation')
+                    ? 'Validation documentation'
+                    : label.includes('risk')
+                    ? 'Risk identification and assessment'
+                    : 'Search your reference material';
+
+                return (
+                  <div key={action.label}>
+
+                    {showCategory && (
+                      <p className="px-2 mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-faint">
+                        {category}
+                      </p>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        onQuickAction(action.prompt);
+                        onMenuClose();
+                      }}
+                      className="group w-full flex items-center gap-3 text-left px-2.5 py-2.5 rounded-md hover:bg-white border border-transparent hover:border-hairline transition-all duration-150"
+                    >
+
+                      <span className="w-8 h-8 rounded-md bg-white border border-hairline flex items-center justify-center shrink-0 text-ink-muted group-hover:text-forest group-hover:border-sage-200 transition-colors">
+                        <Icon
+                          size={15}
+                          strokeWidth={1.8}
+                        />
+                      </span>
+
+                      <span className="min-w-0 flex-1">
+
+                        <span className="block text-[13px] font-medium text-ink-text truncate">
+                          {action.label.replace(/^Generate /, '')}
+                        </span>
+
+                        <span className="block text-[10px] text-ink-muted mt-0.5 truncate">
+                          {subtitle}
+                        </span>
+
+                      </span>
+
+                      <ChevronRight
+                        size={14}
+                        className="text-ink-faint group-hover:text-forest transition-colors"
+                      />
+
+                    </button>
+
+                  </div>
+                );
+              });
+            })()}
+
+          </div>
+
+        </div>
+
+        {/* =====================================================
+            KNOWLEDGE NOTE
+            ===================================================== */}
+
+        <div className="px-4 py-3 border-t border-hairline bg-sidebar">
+
+          <div className="flex items-start gap-2.5">
+
+            <span className="mt-1 w-1.5 h-1.5 rounded-full bg-forest shrink-0" />
+
+            <div>
+
+              <p className="text-[11px] font-medium text-ink-text">
+                Reference-aware generation
+              </p>
+
+              <p className="text-[10px] leading-4 text-ink-muted mt-0.5">
+                Attach a PDF or DOCX in the composer to use it as a working reference.
+              </p>
+
+            </div>
 
           </div>
 
@@ -363,17 +289,14 @@ export default function Sidebar({
             MOBILE CLOSE
             ===================================================== */}
 
-        <div className="px-4 py-3 border-t border-hairline md:hidden">
+        <div className="px-4 py-3 border-t border-hairline md:hidden bg-sidebar">
 
           <button
             onClick={onMenuClose}
-            className="flex items-center gap-2 text-xs text-muted hover:text-content transition-colors min-h-[40px]"
+            className="flex items-center gap-2 text-xs text-ink-muted hover:text-ink-text transition-colors min-h-[40px]"
           >
-
             <Menu size={14} />
-
             Close panel
-
           </button>
 
         </div>
@@ -393,13 +316,11 @@ export default function Sidebar({
               zIndex: 999999,
               width: '100vw',
               height: '100vh',
-              backgroundColor: 'rgba(0, 0, 0, 0.85)',
+              backgroundColor: 'rgba(24, 28, 25, 0.42)',
             }}
           >
 
-            {/* =================================================
-                BACKDROP
-                ================================================= */}
+            {/* Backdrop */}
 
             <div
               style={{
@@ -407,16 +328,12 @@ export default function Sidebar({
                 inset: 0,
                 width: '100%',
                 height: '100%',
-                backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                backgroundColor: 'rgba(24, 28, 25, 0.42)',
               }}
-              onClick={() =>
-                setShowGuide(false)
-              }
+              onClick={() => setShowGuide(false)}
             />
 
-            {/* =================================================
-                MODAL CENTER
-                ================================================= */}
+            {/* Modal center */}
 
             <div
               style={{
@@ -431,77 +348,65 @@ export default function Sidebar({
               }}
             >
 
-              {/* =================================================
-                  ACTUAL MODAL
-                  ================================================= */}
+              {/* Actual modal */}
 
               <div
                 style={{
-                  position: 'relative',
-                  zIndex: 1000001,
                   pointerEvents: 'auto',
                   width: '100%',
-                  maxWidth: '672px',
+                  maxWidth: '720px',
                   maxHeight: '85vh',
-                  overflow: 'hidden',
-                  backgroundColor: '#111318',
-                  color: '#ffffff',
-                  border: '1px solid #333842',
+                  backgroundColor: '#FAFBF8',
+                  border: '1px solid #D9DDD7',
                   borderRadius: '12px',
-                  boxShadow:
-                    '0 25px 50px rgba(0, 0, 0, 0.6)',
+                  boxShadow: '0 24px 60px rgba(24, 28, 25, 0.18)',
+                  overflow: 'hidden',
                 }}
-                onClick={(e) =>
-                  e.stopPropagation()
-                }
               >
 
-                {/* =================================================
-                    HEADER
-                    ================================================= */}
+                {/* Modal header */}
 
                 <div
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    padding: '20px',
-                    borderBottom:
-                      '1px solid #333842',
-                    backgroundColor:
-                      '#111318',
+                    padding: '20px 20px',
+                    borderBottom: '1px solid #D9DDD7',
+                    backgroundColor: '#F5F7F3',
                   }}
                 >
 
                   <div>
 
-                    <h2
+                    <p
                       style={{
                         margin: 0,
-                        fontSize: '16px',
+                        fontSize: '11px',
                         fontWeight: 600,
-                        color: '#ffffff',
+                        letterSpacing: '0.14em',
+                        textTransform: 'uppercase',
+                        color: '#66736A',
+                      }}
+                    >
+                      BioBridge AI
+                    </p>
+
+                    <h2
+                      style={{
+                        margin: '5px 0 0',
+                        fontSize: '18px',
+                        fontWeight: 650,
+                        color: '#1C211E',
                       }}
                     >
                       Prompt &amp; Document Guide
                     </h2>
 
-                    <p
-                      style={{
-                        margin: '6px 0 0',
-                        fontSize: '12px',
-                        color: '#9ca3af',
-                      }}
-                    >
-                      How to get better results from BioBridge AI
-                    </p>
-
                   </div>
 
                   <button
-                    onClick={() =>
-                      setShowGuide(false)
-                    }
+                    onClick={() => setShowGuide(false)}
                     style={{
                       display: 'flex',
                       alignItems: 'center',
@@ -510,9 +415,8 @@ export default function Sidebar({
                       height: '36px',
                       border: 'none',
                       borderRadius: '8px',
-                      backgroundColor:
-                        'transparent',
-                      color: '#9ca3af',
+                      backgroundColor: 'transparent',
+                      color: '#687169',
                       cursor: 'pointer',
                     }}
                     title="Close"
@@ -522,32 +426,26 @@ export default function Sidebar({
 
                 </div>
 
-                {/* =================================================
-                    CONTENT
-                    ================================================= */}
+                {/* Modal content */}
 
                 <div
                   style={{
                     overflowY: 'auto',
-                    maxHeight:
-                      'calc(85vh - 80px)',
+                    maxHeight: 'calc(85vh - 80px)',
                     padding: '20px',
                   }}
                 >
 
                   {/* 1 */}
-                  <section
-                    style={{
-                      marginBottom: '24px',
-                    }}
-                  >
+
+                  <section style={{ marginBottom: '24px' }}>
 
                     <h3
                       style={{
                         margin: '0 0 8px',
                         fontSize: '14px',
                         fontWeight: 600,
-                        color: '#ffffff',
+                        color: '#1C211E',
                       }}
                     >
                       1. Be specific
@@ -558,7 +456,7 @@ export default function Sidebar({
                         margin: 0,
                         fontSize: '14px',
                         lineHeight: 1.6,
-                        color: '#9ca3af',
+                        color: '#687169',
                       }}
                     >
                       Clearly mention what document you need,
@@ -569,18 +467,15 @@ export default function Sidebar({
                   </section>
 
                   {/* 2 */}
-                  <section
-                    style={{
-                      marginBottom: '24px',
-                    }}
-                  >
+
+                  <section style={{ marginBottom: '24px' }}>
 
                     <h3
                       style={{
                         margin: '0 0 8px',
                         fontSize: '14px',
                         fontWeight: 600,
-                        color: '#ffffff',
+                        color: '#1C211E',
                       }}
                     >
                       2. Mention the required sections
@@ -591,7 +486,7 @@ export default function Sidebar({
                         margin: 0,
                         fontSize: '14px',
                         lineHeight: 1.6,
-                        color: '#9ca3af',
+                        color: '#687169',
                       }}
                     >
                       Specify the sections you want, such as
@@ -603,18 +498,15 @@ export default function Sidebar({
                   </section>
 
                   {/* 3 */}
-                  <section
-                    style={{
-                      marginBottom: '24px',
-                    }}
-                  >
+
+                  <section style={{ marginBottom: '24px' }}>
 
                     <h3
                       style={{
                         margin: '0 0 8px',
                         fontSize: '14px',
                         fontWeight: 600,
-                        color: '#ffffff',
+                        color: '#1C211E',
                       }}
                     >
                       3. Specify your sources
@@ -625,7 +517,7 @@ export default function Sidebar({
                         margin: 0,
                         fontSize: '14px',
                         lineHeight: 1.6,
-                        color: '#9ca3af',
+                        color: '#687169',
                       }}
                     >
                       Tell BioBridge whether the answer should use
@@ -636,18 +528,15 @@ export default function Sidebar({
                   </section>
 
                   {/* 4 */}
-                  <section
-                    style={{
-                      marginBottom: '24px',
-                    }}
-                  >
+
+                  <section style={{ marginBottom: '24px' }}>
 
                     <h3
                       style={{
                         margin: '0 0 8px',
                         fontSize: '14px',
                         fontWeight: 600,
-                        color: '#ffffff',
+                        color: '#1C211E',
                       }}
                     >
                       4. Mention regulations or standards
@@ -658,7 +547,7 @@ export default function Sidebar({
                         margin: 0,
                         fontSize: '14px',
                         lineHeight: 1.6,
-                        color: '#9ca3af',
+                        color: '#687169',
                       }}
                     >
                       Where applicable, mention FDA, EMA, ICH,
@@ -669,18 +558,15 @@ export default function Sidebar({
                   </section>
 
                   {/* 5 */}
-                  <section
-                    style={{
-                      marginBottom: '24px',
-                    }}
-                  >
+
+                  <section style={{ marginBottom: '24px' }}>
 
                     <h3
                       style={{
                         margin: '0 0 8px',
                         fontSize: '14px',
                         fontWeight: 600,
-                        color: '#ffffff',
+                        color: '#1C211E',
                       }}
                     >
                       5. Example of a good prompt
@@ -689,13 +575,12 @@ export default function Sidebar({
                     <div
                       style={{
                         padding: '16px',
-                        backgroundColor: '#1a1d24',
-                        border:
-                          '1px solid #333842',
+                        backgroundColor: '#F1F3EF',
+                        border: '1px solid #D9DDD7',
                         borderRadius: '8px',
                         fontSize: '14px',
                         lineHeight: 1.6,
-                        color: '#d1d5db',
+                        color: '#46504A',
                       }}
                     >
                       Prepare a detailed SOP for equipment cleaning.
@@ -711,18 +596,15 @@ export default function Sidebar({
                   </section>
 
                   {/* 6 */}
-                  <section
-                    style={{
-                      marginBottom: '24px',
-                    }}
-                  >
+
+                  <section style={{ marginBottom: '24px' }}>
 
                     <h3
                       style={{
                         margin: '0 0 8px',
                         fontSize: '14px',
                         fontWeight: 600,
-                        color: '#ffffff',
+                        color: '#1C211E',
                       }}
                     >
                       6. For better technical documents
@@ -733,7 +615,7 @@ export default function Sidebar({
                         margin: 0,
                         fontSize: '14px',
                         lineHeight: 1.6,
-                        color: '#9ca3af',
+                        color: '#687169',
                       }}
                     >
                       Mention the expected level of detail, target
@@ -745,18 +627,15 @@ export default function Sidebar({
                   </section>
 
                   {/* 7 */}
-                  <section
-                    style={{
-                      marginBottom: '24px',
-                    }}
-                  >
+
+                  <section style={{ marginBottom: '24px' }}>
 
                     <h3
                       style={{
                         margin: '0 0 8px',
                         fontSize: '14px',
                         fontWeight: 600,
-                        color: '#ffffff',
+                        color: '#1C211E',
                       }}
                     >
                       7. Always review the final document
@@ -767,7 +646,7 @@ export default function Sidebar({
                         margin: 0,
                         fontSize: '14px',
                         lineHeight: 1.6,
-                        color: '#9ca3af',
+                        color: '#687169',
                       }}
                     >
                       Review generated documents for technical
@@ -779,10 +658,10 @@ export default function Sidebar({
                   </section>
 
                   {/* Tip */}
+
                   <div
                     style={{
-                      borderTop:
-                        '1px solid #333842',
+                      borderTop: '1px solid #D9DDD7',
                       paddingTop: '16px',
                     }}
                   >
@@ -792,13 +671,13 @@ export default function Sidebar({
                         margin: 0,
                         fontSize: '12px',
                         lineHeight: 1.5,
-                        color: '#9ca3af',
+                        color: '#687169',
                       }}
                     >
 
                       <span
                         style={{
-                          color: '#ffffff',
+                          color: '#1C211E',
                           fontWeight: 500,
                         }}
                       >
@@ -822,7 +701,6 @@ export default function Sidebar({
           </div>,
           document.body
         )}
-
     </>
   );
 }
