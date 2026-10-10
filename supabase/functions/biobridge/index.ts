@@ -17,7 +17,7 @@ const CHUNK_SIZE = 1400;
 const CHUNK_OVERLAP = 150;
 const MAX_RETRIEVAL = 4;
 const MAX_WEB_RESULTS = 2;
-const MAX_OUTPUT_TOKENS = 6000;
+const MAX_OUTPUT_TOKENS = 8000;
 
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                    */
@@ -601,6 +601,25 @@ For full technical-document requests, produce approximately 3,000–6,000+ words
 
 Do not give short generic chatbot responses when the user asks for a report, technical document, SOP-style document, analysis, comparison or detailed explanation.
 
+DOCUMENT COMPLETENESS REQUIREMENTS
+
+For SOPs, DPRs, URS documents, validation protocols, IQ/OQ/PQ documents, FAT/SAT documents and risk assessments:
+
+1. Produce a complete, end-to-end document, not merely a summary or outline.
+2. Include all relevant sections, subsections, tables and supporting details appropriate to the document type.
+3. Use logical numbering and consistent terminology throughout.
+4. For procedures, include prerequisites, responsibilities, equipment or materials, detailed steps, expected results, acceptance criteria where applicable, and records to retain.
+5. For validation documents, include objectives, scope, responsibilities, prerequisites, test cases, expected results, acceptance criteria and deviation handling where appropriate.
+6. For risk assessments, include hazards, causes, consequences, existing controls, risk ratings and proposed mitigations when sufficient information is available.
+7. For URS documents, include uniquely numbered requirements and verifiable acceptance criteria where appropriate.
+8. For DPRs, include relevant project background, objectives, scope, methodology, resources, timeline, risks, deliverables and conclusions as applicable.
+9. Do not omit required sections merely to shorten the response.
+10. Never invent company-specific facts, approved procedures, specifications, test results or acceptance criteria. Clearly mark details requiring confirmation.
+11. Review the document before returning it and ensure that all requested sections are present.
+12. If the response cannot fit within the available output budget, explicitly identify the remaining sections rather than silently ending midway.
+13. For long documents, prioritize completeness and technical usefulness over introductory filler or repetitive explanations.
+14. Use tables for structured requirements, responsibilities, risks, test cases and acceptance criteria when they improve traceability.
+
 Use professional headings, numbered sections, tables and bullet points where appropriate.
 
 ==================================================
@@ -780,12 +799,19 @@ ${buildReferenceList(
 
   const payload = await response.json();
 
-  const content = payload?.choices?.[0]?.message?.content;
+  const choice = payload?.choices?.[0];
+  const content = choice?.message?.content;
 
-  if (!content) {
+  if (!content || typeof content !== 'string') {
     throw new Error(
       'DeepSeek returned an empty response.',
     );
+  }
+
+  // Make output-budget truncation visible instead of silently returning an
+  // incomplete technical document.
+  if (choice?.finish_reason === 'length') {
+    return `${content}\n\n---\n**Completeness notice:** The response reached the model's output limit and may be incomplete. Ask BioBridge AI to continue from the last completed section before using this document.`;
   }
 
   return content;
